@@ -9,24 +9,6 @@ public class Server {
     private static Peer me;
     private static final ArrayList<Peer> peers = new ArrayList<>();
 
-    private static class Peer {
-        private final String branch;
-        private final String host;
-        private final int    port;
-
-        private Peer(String branch, String host, int port) {
-            this.branch = branch;
-            this.host = host;
-            this.port = port;
-        }
-
-        private String getBranch() { return this.branch; }
-
-        private String getHost() { return this.host; }
-
-        private int getPort() { return this.port; }
-    }
-
     private static void readConfig(String my_branch, String config_path) {
         try {
             File config = new File(config_path);
@@ -45,9 +27,9 @@ public class Server {
         }
     }
 
-    public static void main(String []args) throws FileNotFoundException {
+    public static void main(String[] args) throws FileNotFoundException {
         String branch = args[0];
-        String path = args[1];
-        readConfig(branch, path);
+        readConfig(branch, args[1]);
+        System.out.println("Server: " + branch + " Host: " + me.getHost() + " Port: " + me.getPort() + " is up and running.");
     }
 }

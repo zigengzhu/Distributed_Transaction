@@ -80,7 +80,7 @@ public class Accounts {
         return nameCheck && balanceCheck.get();
     }
 
-    private static class Account {
+    private class Account {
         private int balance;
 
         private Account(int balance) {
