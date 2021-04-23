@@ -13,5 +13,7 @@ public class Peer {
 
     public String getHost() { return this.host; }
 
+    public boolean isSet() { return this.branch != null && this.host != null && this.port != 0; }
+
     public int getPort() { return this.port; }
 }

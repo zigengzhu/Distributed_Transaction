@@ -3,6 +3,7 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Scanner;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Client {
     private static String id;
@@ -10,10 +11,10 @@ public class Client {
     private static Peer coordinator;
 
     private static Socket socket;
-    private static InputStream inputStream;
-    private static OutputStream outputStream;
     private static DataInputStream in;
     private static DataOutputStream out;
+
+    private static ReentrantLock lock = new ReentrantLock();
 
     private static void readConfig(String configPath) {
         try {
@@ -36,15 +37,11 @@ public class Client {
             try {
                 if (in != null) { in.close(); }
                 if (out != null) { out.close(); }
-                if (inputStream != null) { inputStream.close(); }
-                if (outputStream != null) { outputStream.close(); }
                 if (socket != null && socket.isConnected()) { socket.close(); }
 
                 socket = new Socket(coordinator.getHost(), coordinator.getPort());
-                inputStream = socket.getInputStream();
-                in = new DataInputStream(inputStream);
-                outputStream = socket.getOutputStream();
-                out = new DataOutputStream(outputStream);
+                in = new DataInputStream(socket.getInputStream());
+                out = new DataOutputStream(socket.getOutputStream());
 
             } catch (IOException e) {
                 System.out.println("Socket can't be created.");
@@ -56,7 +53,7 @@ public class Client {
         }
     }
 
-    private static void send (String msg) throws IOException {
+    private static void send (String msg) {
         if (msg.isEmpty()) {
             return;
         }
@@ -73,17 +70,15 @@ public class Client {
         @Override
         public void run() {
             System.out.println("Start receiving messages from servers...");
-            //while (true) {
-                try {
-                    while(in.available() > 0) {
-                        String msg = in.readUTF();
-                        System.out.println(msg);
-                    }
-                } catch (Exception e) {
-                    System.out.println("Error receiving msg.");
-                    e.printStackTrace();
+            String msg;
+            try {
+                while((msg = in.readUTF()) != null) {
+                    System.out.println(msg);
                 }
-            //}
+            } catch (Exception e) {
+                System.out.println("Error receiving msg.");
+                e.printStackTrace();
+            }
             System.out.println("MsgReceiver Ended.");
         }
     }
@@ -98,8 +93,10 @@ public class Client {
                     String command = recv.nextLine();
                     if (command.equals("BEGIN")) {
                         setRandomCoordinator();
-                        send(command);
+                        new Thread(new MsgReceiver()).start();
+
                     }
+                    send(command);
                 }
             } catch (Exception e) {
                 System.out.println("InputReceiver Aborted.");
@@ -108,15 +105,9 @@ public class Client {
         }
     }
 
-    public static void main(String[] args) throws FileNotFoundException  {
+    public static void main(String[] args) {
         id = args[0];
         readConfig(args[1]);
-
-        InputReceiver ir = new InputReceiver();
-        ir.run();
-        MsgReceiver mr = new MsgReceiver();
-        mr.run();
-
-
+        new Thread(new InputReceiver()).start();
     }
 }
