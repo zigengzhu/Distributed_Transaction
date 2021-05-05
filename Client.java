@@ -3,111 +3,138 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Scanner;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class Client {
     private static String id;
+    private static String configPath;
+    private static boolean transacting;
     private static final ArrayList<Peer> peers = new ArrayList<>();
-    private static Peer coordinator;
+    private static int coordinator;
 
-    private static Socket socket;
-    private static DataInputStream in;
-    private static DataOutputStream out;
-
-    private static ReentrantLock lock = new ReentrantLock();
-
-    private static void readConfig(String configPath) {
+    private static void readConfig() {
         try {
             File config = new File(configPath);
             Scanner s = new Scanner(config);
             while(s.hasNextLine()) {
                 String[] line = s.nextLine().split("\\s+");
-                peers.add(new Peer(line[0], line[1], Integer.parseInt(line[2])));
+                Peer peer = new Peer(line[0], line[1], Integer.parseInt(line[2]));
+                peers.add(peer);
             }
-        } catch (FileNotFoundException e) {
-            System.out.println("File not found.");
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private static void setRandomCoordinator() throws IOException {
-        if (peers.size() >= 1) {
-            int coordinatorIndex = ThreadLocalRandom.current().nextInt(0, peers.size());
-            coordinator =  peers.get(coordinatorIndex);
-            try {
-                if (in != null) { in.close(); }
-                if (out != null) { out.close(); }
-                if (socket != null && socket.isConnected()) { socket.close(); }
-
-                socket = new Socket(coordinator.getHost(), coordinator.getPort());
-                in = new DataInputStream(socket.getInputStream());
-                out = new DataOutputStream(socket.getOutputStream());
-
-            } catch (IOException e) {
-                System.out.println("Socket can't be created.");
-                e.printStackTrace();
+    private static void startConnection() throws InterruptedException {
+        try{
+            readConfig();
+            for (Peer p: peers) {
+                p.connect();
+                new Thread(new MsgReceiver(p)).start();
             }
-            System.out.println("New Coordinator: " + coordinator.getBranch());
+        } catch (IOException e) {
+            new Thread(new TerminateConnection()).start();
+            System.out.println("Not all servers are ready, reconnect in 5 seconds");
+            Thread.sleep(5000);
+            startConnection();
+        }
+    }
+
+    private static void setRandomCoordinator() {
+        if (peers.size() >= 1) {
+            int newCoordinator = ThreadLocalRandom.current().nextInt(0, peers.size());
+            coordinator = newCoordinator == coordinator ? coordinator : newCoordinator;
+            System.out.println("Coordinator: " + peers.get(coordinator).branch);
         } else {
             throw new IllegalStateException();
         }
     }
 
     private static void send (String msg) {
-        if (msg.isEmpty()) {
-            return;
-        }
-        try { // maybe add a loop to wait for valid output stream
-            out.writeUTF(msg);
+        if (msg.isEmpty()) return;
+        try {
+            DataOutputStream out = peers.get(coordinator).out;
+            out.writeUTF(id + ' ' + msg);
             out.flush();
         } catch (IOException e) {
-            System.out.println("Error sending msg: " + msg);
             e.printStackTrace();
         }
     }
 
+    private static class TerminateConnection extends Thread {
+        public void run() {
+            for (Peer p: peers) {
+                try {
+                    p.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            peers.clear();
+            System.out.println("Connections Terminated");
+        }
+    }
+
     private static class MsgReceiver implements Runnable {
-        @Override
+        Peer peer;
+        public MsgReceiver(Peer peer) {
+            this.peer = peer;
+        }
         public void run() {
             System.out.println("Start receiving messages from servers...");
             String msg;
-            try {
-                while((msg = in.readUTF()) != null) {
-                    System.out.println(msg);
+            while(true) {
+                try {
+                    Runtime.getRuntime().addShutdownHook(new TerminateConnection());
+                    msg = this.peer.in.readUTF();
+                    if (!msg.isEmpty()) {
+                        if (msg.equals("ABORTED") || msg.equals("NOT FOUND, ABORTED")) {
+                            transacting = false;
+                        }
+                        System.out.println(msg);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    try {
+                        peer.close();
+                    } catch (IOException ioException) {
+                        ioException.printStackTrace();
+                    }
+                    return;
                 }
-            } catch (Exception e) {
-                System.out.println("Error receiving msg.");
-                e.printStackTrace();
             }
-            System.out.println("MsgReceiver Ended.");
         }
     }
 
     private static class InputReceiver implements Runnable {
-        @Override
         public void run() {
             System.out.println("Start receiving inputs...");
             Scanner recv = new Scanner(System.in);
             try {
                 while(recv.hasNextLine()) {
                     String command = recv.nextLine();
-                    if (command.equals("BEGIN")) {
+                    if (!transacting && command.equals("BEGIN")) {
+                        transacting = true;
                         setRandomCoordinator();
-                        new Thread(new MsgReceiver()).start();
-
+                        send(command);
+                    } else if (transacting) {
+                        if (command.equals("COMMIT")) {
+                            transacting = false;
+                        }
+                        send(command);
                     }
-                    send(command);
                 }
             } catch (Exception e) {
-                System.out.println("InputReceiver Aborted.");
                 e.printStackTrace();
             }
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         id = args[0];
-        readConfig(args[1]);
+        configPath = args[1];
+        transacting = false;
+        startConnection();
         new Thread(new InputReceiver()).start();
     }
 }

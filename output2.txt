@@ -1,0 +1,10 @@
+Server A is connected.
+Start receiving messages from servers...
+Server B is connected.
+Start receiving messages from servers...
+Start receiving inputs...
+Coordinator: A
+OK
+OK 
+OK 
+COMMIT
