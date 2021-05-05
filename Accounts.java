@@ -1,7 +1,4 @@
-import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 
 public class Accounts {
 
@@ -26,7 +23,6 @@ public class Accounts {
         } else {
             tx.setTimestamp(client_timestamp.get(tx.client));
         }
-
         if (tx.command.equals("DEPOSIT")) {
             return desposit(tx);
         }
@@ -49,6 +45,9 @@ public class Accounts {
         if (tx.timestamp > account.last_committed) {
             String[] ans = account.getD(tx.timestamp);
             if (ans[0].equals("true")) {
+                if (!account.rts.contains(tx.timestamp)) {
+                    account.rts.add(tx.timestamp);
+                }
                 return ans[1];
             } else {
                 return "WAIT";
@@ -100,6 +99,37 @@ public class Accounts {
         }
     }
 
+    public String checkCommit(String client) {
+        int timestamp = client_timestamp.get(client);
+        for (Account acc: accounts.values()) {
+            if (acc.tw.containsKey(timestamp)) {
+                // Check whether previous uncommitted tx exists, if true, return wait
+                for (int tw_timestamp: acc.tw.keySet()) {
+                    if (tw_timestamp < timestamp) {
+                        return "WAIT";
+                    }
+                }
+                // Check consistency
+                if (acc.balance + acc.tw.get(timestamp) < 0) {
+                    abort(client);
+                    return "ABORTED";
+                }
+            }
+        }
+        return "CAN COMMIT";
+    }
+
+    public void Commit(String client) {
+        int timestamp = client_timestamp.get(client);
+        for (Account acc: accounts.values()) {
+            acc.balance += acc.tw.get(timestamp);
+            acc.last_committed = timestamp;
+            acc.tw.remove(timestamp);
+            acc.committed_history.put(timestamp, acc.balance);
+        }
+        printAccounts();
+    }
+
     public void abort(String client) {
         int timestamp = client_timestamp.get(client);
         for (Account acct: accounts.values()) {
@@ -111,37 +141,7 @@ public class Accounts {
         client_timestamp.remove(client);
     }
 
-
-
-    public int getBalance(String name) {
-        if ( !this.accounts.containsKey(name)) {
-            return -1;
-        } else {
-            return this.accounts.get(name).getBalance();
-        }
-    }
-
     public void printAccounts() {
         this.accounts.forEach((k,v)-> System.out.println("Account: "+k+", Balance: "+v.balance));
     }
-
-    public void printTemp() {
-        this.temp.forEach((k,v)-> System.out.println("Account: "+k+", Balance: "+v.balance));
-    }
-
-    private boolean isConsistent() {
-        // Check that accounts in this.temp include that of this.accounts
-        boolean nameCheck = this.temp.keySet().containsAll(this.accounts.keySet());
-        // Check that all account balances are consistent (multithreading)
-        AtomicBoolean balanceCheck = new AtomicBoolean(true);
-        this.temp.forEachValue(Long.MAX_VALUE, account -> {
-            if (account.balance < 0 || account.balance > 100000000) {
-                balanceCheck.set(false);
-            }
-        });
-        return nameCheck && balanceCheck.get();
-    }
-
-
-
 }

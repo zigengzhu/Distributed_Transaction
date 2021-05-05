@@ -12,18 +12,6 @@ public class Account {
         this.last_committed = 0;
     }
 
-    int getBalance() { // read
-        return this.balance;
-    }
-
-    void deposit(int amount) {
-        this.balance += amount;
-    }
-
-    void withdraw(int amount) {
-        this.balance -= amount;
-    }
-
     int maxRTS() {
         if (rts.isEmpty()) {
             return 0;
@@ -54,6 +42,4 @@ public class Account {
         }
         return ans;
     }
-
-
 }
