@@ -10,6 +10,7 @@ public class Account {
     Account(int balance) {
         this.balance = balance;
         this.last_committed = 0;
+        this.committed_history.put(this.last_committed, this.balance); //0, 0
     }
 
     int maxRTS() {
@@ -24,20 +25,25 @@ public class Account {
         String[] ans = new String[2]; // canRead, D
         if (tw.isEmpty()) {
             ans[0] = "true";
-            ans[1] = "" + committed_history.get(last_committed);
+            ans[1] = Integer.toString(committed_history.get(last_committed));
         } else  {
             int max_prev_time = 0;
             for (int t : tw.keySet()) {
                 if (t > max_prev_time && t <= timestamp) {
-                    max_prev_time = timestamp;
+                    max_prev_time = t;
                 }
             }
             if (max_prev_time == timestamp) {
-                ans[0] = "true";
-                ans[1] = Integer.toString(tw.get(timestamp) + balance);
+                if (tw.containsKey(timestamp)) {
+                    ans[0] = "true";
+                    ans[1] = Integer.toString(tw.get(timestamp) + balance);
+                } else {
+                    ans[0] = "true";
+                    ans[1] = Integer.toString(balance);
+                }
             } else {
-                ans[0] = "false";
-                ans[1] = Integer.toString(tw.get(max_prev_time) + balance);
+                ans[0] = "wait";
+                ans[1] = "";
             }
         }
         return ans;

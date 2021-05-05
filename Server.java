@@ -46,18 +46,19 @@ public class Server {
         Peer sendTo = peers.get(destServer);
         if (server == null || sendTo == null || msg.isEmpty()) { return; }
         try {
-            sendTo.connect();
+            if (sendTo.socket == null) {
+                sendTo.connect();
+            }
             String message;
             if (isReply) {
                 message = "REPLY " + destClient + " " + msg;
 
             } else {
-                message = "FROM " + me.branch + " " + msg;
+                message = "FROM " + me.branch + " " + destClient + " " + msg;
             }
             System.out.println(message);
             sendTo.out.writeUTF(message);
             sendTo.out.flush();
-            sendTo.close();
         } catch (IOException e) {
             System.out.println("Error occured while communicating with server: " + sendTo.branch + "\n");
             e.printStackTrace();
@@ -108,16 +109,17 @@ public class Server {
             this.original = command;
             this.command = command.split("\\s+");
             this.out = out;
+            // Reply from other servers received
             if (this.command[0].equals("REPLY")) {
                 this.client = this.command[1];
                 this.fromServer = "";
                 this.isReply = true;
-            } else if (this.command[0].equals("FROM")) {
+            } else if (this.command[0].equals("FROM")) { // Command from other servers received
                 this.fromServer = this.command[1];
                 this.client = this.command[2];
                 this.command = Arrays.copyOfRange(this.command, 3, this.command.length + 1);
                 this.isReply = false;
-            } else {
+            } else { // Command from client received
                 this.fromServer = "";
                 this.client = this.command[0];
                 this.command = Arrays.copyOfRange(this.command, 1, this.command.length + 1);
@@ -155,6 +157,10 @@ public class Server {
                 sendToClient(out, "COMMIT");
                 return;
             }
+            if (command[0].equals("ABORT")) {
+                acc.abort(client);
+                return;
+            }
             // other commands
             String[] destAccount = command[1].split("\\.");
             if (!destAccount[0].equals(me.branch)) {
@@ -167,7 +173,19 @@ public class Server {
                 } else {
                     tx = new Transaction(client, command[0], destAccount[1], Integer.parseInt(command[2]));
                 }
-                String output = acc.execute(tx);
+                String output = null;
+                try {
+                    output = acc.execute(tx);
+                } catch (InterruptedException interruptedException) {
+                    interruptedException.printStackTrace();
+                }
+                if (output.equals("ABORTED") || output.equals("NOT FOUND, ABORTED")) {
+                    // Server abort the tx within the server, send abort command to peers to abort the same tx
+                    acc.abort(client);
+                    for (Peer p: peers.values()) {
+                        sendToServer(p.branch, client, "ABORT", false);
+                    }
+                }
                 if (fromServer.isEmpty()) {
                     // send back to client
                     sendToClient(out, output);
@@ -181,7 +199,7 @@ public class Server {
 
     private static class ConnectionHandler implements Runnable{
         private final Socket client;
-        private boolean killed;
+        private final boolean killed;
 
         public ConnectionHandler(Socket s) {
             this.client = s;

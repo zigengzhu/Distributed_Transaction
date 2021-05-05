@@ -3,9 +3,8 @@ Start receiving messages from servers...
 Server B is connected.
 Start receiving messages from servers...
 Start receiving inputs...
-Coordinator: A
+Coordinator: B
 OK
+OK 
 OK
-10
-OK
--190
+NOT FOUND, ABORTED 

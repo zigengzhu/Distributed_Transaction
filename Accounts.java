@@ -14,7 +14,7 @@ public class Accounts {
         this.latest_timestamp = 1;
     }
 
-    public String execute(Transaction tx) {
+    public String execute(Transaction tx) throws InterruptedException {
         // Assign Timestamp to each transaction
         if (!client_timestamp.containsKey(tx.client)) {
             client_timestamp.put(tx.client, latest_timestamp);
@@ -23,6 +23,7 @@ public class Accounts {
         } else {
             tx.setTimestamp(client_timestamp.get(tx.client));
         }
+
         if (tx.command.equals("DEPOSIT")) {
             return desposit(tx);
         }
@@ -33,14 +34,21 @@ public class Accounts {
             String output = getBalance(tx);
             while (output.equals("WAIT")) {
                 output = getBalance(tx);
+                Thread.sleep(10);
             }
+            System.out.println("RETURN " + output);
             return output;
+        }
+        if (tx.command.equals("ABORT")) {
+            abort(tx.client);
         }
         return "";
     }
 
     public String getBalance(Transaction tx) {
-        printAccounts();
+        if (!accounts.containsKey(tx.account)) {
+            return "NOT FOUND, ABORTED";
+        }
         Account account = accounts.get(tx.account);
         if (tx.timestamp > account.last_committed) {
             String[] ans = account.getD(tx.timestamp);
@@ -53,7 +61,6 @@ public class Accounts {
                 return "WAIT";
             }
         } else {
-            abort(tx.client);
             return "ABORTED";
         }
     }
@@ -68,13 +75,16 @@ public class Accounts {
         } else {
             Account account = accounts.get(tx.account);
             if (tx.timestamp >= account.maxRTS() && tx.timestamp > account.last_committed) {
-                int combinedTxValue = account.tw.get(tx.timestamp);
-                combinedTxValue += tx.amount;
-                account.tw.put(tx.timestamp, combinedTxValue);
+                if (!account.tw.containsKey(tx.timestamp)) {
+                    account.tw.put(tx.timestamp, tx.amount);
+                } else {
+                    int combinedTxValue = account.tw.get(tx.timestamp);
+                    combinedTxValue += tx.amount;
+                    account.tw.put(tx.timestamp, combinedTxValue);
+                }
                 printAccounts();
                 return "OK";
             } else {
-                abort(tx.client);
                 return "ABORTED";
             }
         }
@@ -82,18 +92,19 @@ public class Accounts {
 
     public String withdraw(Transaction tx) {
         if (!accounts.containsKey(tx.account)) {
-            abort(tx.client);
             return "NOT FOUND, ABORTED";
         } else {
             Account account = accounts.get(tx.account);
             if (tx.timestamp >= account.maxRTS() && tx.timestamp > account.last_committed) {
-                int combinedTxValue = account.tw.get(tx.timestamp);
-                combinedTxValue -= tx.amount;
-                account.tw.put(tx.timestamp, combinedTxValue);
-                printAccounts();
+                if (!account.tw.containsKey(tx.timestamp)) {
+                    account.tw.put(tx.timestamp, -1 * tx.amount);
+                } else {
+                    int combinedTxValue = account.tw.get(tx.timestamp);
+                    combinedTxValue -= tx.amount;
+                    account.tw.put(tx.timestamp, combinedTxValue);
+                }
                 return "OK";
             } else {
-                abort(tx.client);
                 return "ABORTED";
             }
         }
@@ -111,7 +122,6 @@ public class Accounts {
                 }
                 // Check consistency
                 if (acc.balance + acc.tw.get(timestamp) < 0) {
-                    abort(client);
                     return "ABORTED";
                 }
             }
@@ -131,14 +141,16 @@ public class Accounts {
     }
 
     public void abort(String client) {
-        int timestamp = client_timestamp.get(client);
-        for (Account acct: accounts.values()) {
-            if (acct.rts.contains(timestamp)) {
-                acct.rts.remove(timestamp);
+        if (client_timestamp.containsKey(client)) {
+            int timestamp = client_timestamp.get(client);
+            for (Account acct: accounts.values()) {
+                if (acct.rts.contains(timestamp)) {
+                    acct.rts.remove(Integer.valueOf(timestamp));
+                }
+                acct.tw.remove(timestamp);
             }
-            acct.tw.remove(timestamp);
+            client_timestamp.remove(client);
         }
-        client_timestamp.remove(client);
     }
 
     public void printAccounts() {

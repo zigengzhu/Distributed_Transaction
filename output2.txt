@@ -5,6 +5,9 @@ Start receiving messages from servers...
 Start receiving inputs...
 Coordinator: A
 OK
+0
+0 
+OK
+30
 OK 
-OK 
-COMMIT
+20 

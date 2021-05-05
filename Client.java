@@ -117,11 +117,13 @@ public class Client {
                         transacting = true;
                         setRandomCoordinator();
                         send(command);
+                        Thread.sleep(10);
                     } else if (transacting) {
                         if (command.equals("COMMIT")) {
                             transacting = false;
                         }
                         send(command);
+                        Thread.sleep(10);
                     }
                 }
             } catch (Exception e) {
