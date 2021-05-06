@@ -36,7 +36,7 @@ public class Server {
             return;
         }
         try {
-            System.out.println("Send to client: " + msg);
+            //System.out.println("Send to client: " + msg);
             destOut.writeUTF(msg);
             destOut.flush();
         } catch (IOException e) {
@@ -54,11 +54,10 @@ public class Server {
             String message;
             if (isReply) {
                 message = "REPLY " + destClient + " " + msg;
-
             } else {
                 message = "FROM " + me.branch + " " + destClient + " " + msg;
             }
-            System.out.println(message);
+            //System.out.println(message);
             sendTo.out.writeUTF(message);
             sendTo.out.flush();
         } catch (IOException e) {
@@ -71,14 +70,13 @@ public class Server {
         try{
             server = new ServerSocket(me.port);
             server.setReuseAddress(true);
-            System.out.println("Listening...");
+            //System.out.println("Listening...");
 
             while(true) {
                 Socket client = server.accept();
                 String hostname = client.getInetAddress().getHostAddress();
 
-                System.out.println("Connected with client " + hostname + " Port: " +
-                        client.getPort());
+                //System.out.println("Connected with client " + hostname + " Port: " + client.getPort());
                 ConnectionHandler connection = new ConnectionHandler(client);
                 clients.put(hostname, connection);
                 (new Thread(connection)).start();
@@ -139,27 +137,29 @@ public class Server {
                     sb.append(" ");
                 }
                 String reply = sb.toString();
+
                 if (reply.equals("ABORTED") || reply.equals("NOT FOUND, ABORTED")) {
                     abortAll(client);
                 }
                 sendToClient(clients_pending_reply.get(client), reply);
-                //clients_pending_reply.remove(client);
                 return;
             }
             if (this.isReply && command[2].equals("CANCOMMIT") && clients_pending_commit.containsKey(client)) {
                 int num_commit = clients_pending_commit.get(client);
                 if (num_commit + 1 == peers.size() + 1) {
                     commitAll(client);
+                    sendToClient(clients_pending_reply.get(client), "COMMIT OK");
                 } else {
                     clients_pending_commit.put(client, num_commit + 1);
                 }
                 return;
             }
             if (this.isReply && command[2].equals("CANNOTCOMMIT")) {
-                //sendToClient(out, "ABORTED");
                 abortAll(client);
+                sendToClient(clients_pending_reply.get(client), "ABORTED");
                 return;
             }
+
             if (command[0].equals("BEGIN")) {
                 sendToClient(out, "OK");
                 return;
@@ -170,23 +170,28 @@ public class Server {
                 while (output.equals("WAIT")) {
                     output = acc.checkCommit(client);
                     try {
-                        Thread.sleep(10);
+                        Thread.sleep(1);
                     } catch (InterruptedException interruptedException) {
                         interruptedException.printStackTrace();
                     }
                 }
                 if (output.equals("CANNOTCOMMIT")) {
                     abortAll(client);
+                    sendToClient(out, "ABORTED");
                 } else if (output.equals("CANCOMMIT")){
                     int num_commit = clients_pending_commit.get(client);
                     if (num_commit + 1 == peers.size() + 1) {
                         commitAll(client);
+                        sendToClient(out, "COMMIT OK");
                     } else {
                         clients_pending_commit.put(client, num_commit + 1);
                     }
                 }
                 return;
             }
+
+
+
             if (command[0].equals("CHECKCOMMIT") && !fromServer.equals("")) {
                 // broadcast Precommit to all servers
                 // if all good to commit received, broadcast commit
@@ -196,7 +201,7 @@ public class Server {
                 while (output.equals("WAIT")) {
                     output = acc.checkCommit(client);
                     try {
-                        Thread.sleep(10);
+                        Thread.sleep(1);
                     } catch (InterruptedException interruptedException) {
                         interruptedException.printStackTrace();
                     }
@@ -222,30 +227,18 @@ public class Server {
                 String output = "";
                 if (command[0].equals("BALANCE")) {
                     tx = new Transaction(client, "BALANCE", destAccount[1], 0);
-                    try {
-                        output = acc.execute(tx);
-                    } catch (InterruptedException interruptedException) {
-                        interruptedException.printStackTrace();
-                    }
-                    if (!output.equals("NOT FOUND, ABORTED") && !output.equals("ABORTED")) {
-                        output = me.branch + "." + tx.account + " = " + output;
-                    }
                 } else {
                     tx = new Transaction(client, command[0], destAccount[1], Integer.parseInt(command[2]));
-                    try {
-                        output = acc.execute(tx);
-                    } catch (InterruptedException interruptedException) {
-                        interruptedException.printStackTrace();
-                    }
                 }
+                try {
+                    output = acc.execute(tx);
+                } catch (InterruptedException interruptedException) {
+                    interruptedException.printStackTrace();
+                }
+
                 assert !output.equals("");
-                /*if (output.equals("ABORTED") || output.equals("NOT FOUND, ABORTED")) {
-                    // Server abort the tx within the server, send abort command to peers to abort the same tx
-                    abortAll(client);
-                    return;
-                }*/
-                if (fromServer.isEmpty()) {
-                    // send back to client
+
+                if (fromServer.equals("")) {
                     if (output.equals("NOT FOUND, ABORTED") || output.equals("ABORTED")) {
                         abortAll(client);
                     }
@@ -253,6 +246,7 @@ public class Server {
                 } else {
                     sendToServer(fromServer, client, output, true);
                 }
+                //sendToServer(fromServer, client, output, true);
             }
         }
     }
@@ -270,7 +264,6 @@ public class Server {
         for (Peer p: peers.values()) {
             sendToServer(p.branch, client, "ABORT", false);
         }
-        sendToClient(clients_pending_reply.get(client), "ABORTED");
     }
 
     private static void commitAll(String client) {
@@ -279,7 +272,6 @@ public class Server {
         for (Peer p: peers.values()) {
             sendToServer(p.branch, client, "DOCOMMIT", false);
         }
-        sendToClient(clients_pending_reply.get(client), "COMMIT OK");
     }
 
     private static class ConnectionHandler implements Runnable{
@@ -305,7 +297,7 @@ public class Server {
                     }
                     command = in.readUTF();
                     if (!command.isEmpty()) {
-                        System.out.println(command);
+                        //System.out.println(command);
                         new Thread(new CommandHandler(command, out)).start();
                     }
                 }
@@ -322,7 +314,7 @@ public class Server {
     public static void main(String[] args) {
         String branch = args[0];
         readConfig(branch, args[1]);
-        System.out.println("Server: " + branch + " Host: " + me.host + " Port: " + me.port + " is up and running.");
+        //System.out.println("Server: " + branch + " Host: " + me.host + " Port: " + me.port + " is up and running.");
         listen();
     }
 }

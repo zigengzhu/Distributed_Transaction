@@ -21,7 +21,7 @@ public class Peer {
         this.socket = new Socket(this.host, this.port);
         this.in = new DataInputStream(socket.getInputStream());
         this.out = new DataOutputStream(socket.getOutputStream());
-        System.out.println("Server " + branch + " is connected.");
+        //System.out.println("Server " + branch + " is connected.");
     }
 
     public void close() throws IOException {

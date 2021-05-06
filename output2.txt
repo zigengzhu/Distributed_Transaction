@@ -1,10 +1,4 @@
-Server A is connected.
-Start receiving messages from servers...
-Server B is connected.
-Start receiving messages from servers...
-Start receiving inputs...
-Coordinator: B
 OK
-OK 
 OK
-A.A = -1 
+OK
+-8

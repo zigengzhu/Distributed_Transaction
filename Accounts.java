@@ -1,16 +1,18 @@
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Accounts {
 
     final ConcurrentHashMap<String, Account> accounts;
-    final ConcurrentHashMap<String, Account> temp;
     final ConcurrentHashMap<String, Integer> client_timestamp;
+    final ConcurrentHashMap<String, Integer> tx_account; // records which tx created which account
     int latest_timestamp;
 
     public Accounts() {
         this.accounts = new ConcurrentHashMap<>();
-        this.temp = new ConcurrentHashMap<>();
         this.client_timestamp = new ConcurrentHashMap<>();
+        this.tx_account = new ConcurrentHashMap<>();
         this.latest_timestamp = 1;
     }
 
@@ -35,7 +37,7 @@ public class Accounts {
             while (output.equals("WAIT")) {
                 output = getBalance(tx);
                 try {
-                    Thread.sleep(10);
+                    Thread.sleep(1);
                 } catch (InterruptedException interruptedException) {
                     interruptedException.printStackTrace();
                 }
@@ -70,10 +72,10 @@ public class Accounts {
 
     public String desposit(Transaction tx) {
         if (!accounts.containsKey(tx.account)) {
-            Account account = new Account(0);
+            Account account = new Account(tx.account, 0);
             account.tw.put(tx.timestamp, tx.amount);
             accounts.put(tx.account, account);
-            printAccounts();
+            tx_account.put(tx.account, tx.timestamp);
             return "OK";
         } else {
             Account account = accounts.get(tx.account);
@@ -85,7 +87,6 @@ public class Accounts {
                     combinedTxValue += tx.amount;
                     account.tw.put(tx.timestamp, combinedTxValue);
                 }
-                printAccounts();
                 return "OK";
             } else {
                 return "ABORTED";
@@ -154,17 +155,26 @@ public class Accounts {
     public void abort(String client) {
         if (client_timestamp.containsKey(client)) {
             int timestamp = client_timestamp.get(client);
+            List<String> removed_acc = new ArrayList<>();
             for (Account acc: accounts.values()) {
                 if (acc.rts.contains(timestamp)) {
                     acc.rts.remove(Integer.valueOf(timestamp));
                 }
+                if (tx_account.get(acc.name) == timestamp) {
+                    removed_acc.add(acc.name);
+                    tx_account.remove(acc.name);
+                }
                 acc.tw.remove(timestamp);
+            }
+            for (String acc: removed_acc) {
+                accounts.remove(acc);
             }
             client_timestamp.remove(client);
         }
     }
 
     public void printAccounts() {
-        this.accounts.forEach((k,v)-> System.out.println("Account: "+k+", Balance: "+v.balance));
+        this.accounts.forEach((k,v)-> System.out.print(k + ":"+v.balance+" "));
+        System.out.print("\n");
     }
 }

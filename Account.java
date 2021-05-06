@@ -1,13 +1,15 @@
 import java.util.*;
 
 public class Account {
+    String name;
     int balance;
     int last_committed;
     List<Integer> rts = new ArrayList<>();
     Map<Integer, Integer> tw = new HashMap<>();
     Map<Integer, Integer> committed_history = new HashMap<>();
 
-    Account(int balance) {
+    Account(String name, int balance) {
+        this.name = name;
         this.balance = balance;
         this.last_committed = 0;
         this.committed_history.put(this.last_committed, this.balance); //0, 0

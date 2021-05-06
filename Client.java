@@ -44,7 +44,7 @@ public class Client {
         if (peers.size() >= 1) {
             int newCoordinator = ThreadLocalRandom.current().nextInt(0, peers.size());
             coordinator = newCoordinator == coordinator ? coordinator : newCoordinator;
-            System.out.println("Coordinator: " + peers.get(coordinator).branch);
+            //System.out.println("Coordinator: " + peers.get(coordinator).branch);
         } else {
             throw new IllegalStateException();
         }
@@ -71,7 +71,7 @@ public class Client {
                 }
             }
             peers.clear();
-            System.out.println("Connections Terminated");
+            //System.out.println("Connections Terminated");
         }
     }
 
@@ -81,7 +81,7 @@ public class Client {
             this.peer = peer;
         }
         public void run() {
-            System.out.println("Start receiving messages from servers...");
+            //System.out.println("Start receiving messages from servers...");
             String msg;
             while(true) {
                 try {
@@ -108,7 +108,7 @@ public class Client {
 
     private static class InputReceiver implements Runnable {
         public void run() {
-            System.out.println("Start receiving inputs...");
+            //System.out.println("Start receiving inputs...");
             Scanner recv = new Scanner(System.in);
             try {
                 while(recv.hasNextLine()) {
