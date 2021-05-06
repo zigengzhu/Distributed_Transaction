@@ -6,5 +6,4 @@ Start receiving inputs...
 Coordinator: B
 OK
 OK 
-OK
 NOT FOUND, ABORTED 

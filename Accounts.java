@@ -19,7 +19,7 @@ public class Accounts {
         if (!client_timestamp.containsKey(tx.client)) {
             client_timestamp.put(tx.client, latest_timestamp);
             tx.setTimestamp(latest_timestamp);
-            latest_timestamp++;
+            latest_timestamp+=1;
         } else {
             tx.setTimestamp(client_timestamp.get(tx.client));
         }
@@ -34,9 +34,12 @@ public class Accounts {
             String output = getBalance(tx);
             while (output.equals("WAIT")) {
                 output = getBalance(tx);
-                Thread.sleep(10);
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException interruptedException) {
+                    interruptedException.printStackTrace();
+                }
             }
-            System.out.println("RETURN " + output);
             return output;
         }
         if (tx.command.equals("ABORT")) {
@@ -111,31 +114,39 @@ public class Accounts {
     }
 
     public String checkCommit(String client) {
-        int timestamp = client_timestamp.get(client);
-        for (Account acc: accounts.values()) {
-            if (acc.tw.containsKey(timestamp)) {
-                // Check whether previous uncommitted tx exists, if true, return wait
-                for (int tw_timestamp: acc.tw.keySet()) {
-                    if (tw_timestamp < timestamp) {
-                        return "WAIT";
+        if (client_timestamp.containsKey(client)) {
+            int timestamp = client_timestamp.get(client);
+            for (Account acc: accounts.values()) {
+                if (acc.tw.containsKey(timestamp)) {
+                    // Check whether previous uncommitted tx exists, if true, return wait
+                    for (int tw_timestamp: acc.tw.keySet()) {
+                        if (tw_timestamp < timestamp) {
+                            return "WAIT";
+                        }
                     }
-                }
-                // Check consistency
-                if (acc.balance + acc.tw.get(timestamp) < 0) {
-                    return "ABORTED";
+                    // Check consistency
+                    if (acc.balance + acc.tw.get(timestamp) < 0) {
+                        return "CANNOTCOMMIT";
+                    }
                 }
             }
         }
-        return "CAN COMMIT";
+        return "CANCOMMIT";
     }
 
-    public void Commit(String client) {
-        int timestamp = client_timestamp.get(client);
-        for (Account acc: accounts.values()) {
-            acc.balance += acc.tw.get(timestamp);
-            acc.last_committed = timestamp;
-            acc.tw.remove(timestamp);
-            acc.committed_history.put(timestamp, acc.balance);
+    public void commit(String client) {
+        if (client_timestamp.containsKey(client)) {
+            int timestamp = client_timestamp.get(client);
+            for (Account acc: accounts.values()) {
+                if (!acc.tw.containsKey(timestamp)) {
+                    continue;
+                }
+                acc.balance += acc.tw.get(timestamp);
+                acc.last_committed = timestamp;
+                acc.tw.remove(timestamp);
+                acc.committed_history.put(timestamp, acc.balance);
+            }
+            client_timestamp.remove(client);
         }
         printAccounts();
     }
@@ -143,11 +154,11 @@ public class Accounts {
     public void abort(String client) {
         if (client_timestamp.containsKey(client)) {
             int timestamp = client_timestamp.get(client);
-            for (Account acct: accounts.values()) {
-                if (acct.rts.contains(timestamp)) {
-                    acct.rts.remove(Integer.valueOf(timestamp));
+            for (Account acc: accounts.values()) {
+                if (acc.rts.contains(timestamp)) {
+                    acc.rts.remove(Integer.valueOf(timestamp));
                 }
-                acct.tw.remove(timestamp);
+                acc.tw.remove(timestamp);
             }
             client_timestamp.remove(client);
         }

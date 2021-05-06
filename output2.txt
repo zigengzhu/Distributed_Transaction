@@ -3,11 +3,8 @@ Start receiving messages from servers...
 Server B is connected.
 Start receiving messages from servers...
 Start receiving inputs...
-Coordinator: A
+Coordinator: B
 OK
-0
-0 
-OK
-30
 OK 
-20 
+OK
+A.A = -1 

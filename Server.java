@@ -12,6 +12,7 @@ public class Server {
     private static ServerSocket server;
     private static final Map<String, ConnectionHandler> clients = new HashMap<>();
     private static final Map<String, DataOutputStream> clients_pending_reply = new HashMap<>();
+    private static final Map<String, Integer> clients_pending_commit = new HashMap<>();
 
     private static void readConfig(String myBranch, String configPath) {
         try {
@@ -35,6 +36,7 @@ public class Server {
             return;
         }
         try {
+            System.out.println("Send to client: " + msg);
             destOut.writeUTF(msg);
             destOut.flush();
         } catch (IOException e) {
@@ -130,34 +132,83 @@ public class Server {
         @Override
         public void run() {
             // Reply
-            if (this.isReply) {
+            if (this.isReply && !command[2].equals("CANCOMMIT") && !command[2].equals("CANNOTCOMMIT") ) {
                 StringBuilder sb = new StringBuilder();
                 for (int i = 2; i < command.length; i++) {
                     sb.append(command[i]);
                     sb.append(" ");
                 }
-                sendToClient(clients_pending_reply.get(client), sb.toString());
-                clients_pending_reply.remove(client);
+                String reply = sb.toString();
+                if (reply.equals("ABORTED") || reply.equals("NOT FOUND, ABORTED")) {
+                    abortAll(client);
+                }
+                sendToClient(clients_pending_reply.get(client), reply);
+                //clients_pending_reply.remove(client);
                 return;
             }
-            // Commands only from Client: BEGIN / COMMIT
+            if (this.isReply && command[2].equals("CANCOMMIT") && clients_pending_commit.containsKey(client)) {
+                int num_commit = clients_pending_commit.get(client);
+                if (num_commit + 1 == peers.size() + 1) {
+                    commitAll(client);
+                } else {
+                    clients_pending_commit.put(client, num_commit + 1);
+                }
+                return;
+            }
+            if (this.isReply && command[2].equals("CANNOTCOMMIT")) {
+                //sendToClient(out, "ABORTED");
+                abortAll(client);
+                return;
+            }
             if (command[0].equals("BEGIN")) {
                 sendToClient(out, "OK");
                 return;
             }
-            if (command[0].equals("COMMIT")) {
-
+            if (command[0].equals("COMMIT")) { // Is coordinator, received command to commit
+                checkCommitAll(client);
+                String output = acc.checkCommit(client);
+                while (output.equals("WAIT")) {
+                    output = acc.checkCommit(client);
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException interruptedException) {
+                        interruptedException.printStackTrace();
+                    }
+                }
+                if (output.equals("CANNOTCOMMIT")) {
+                    abortAll(client);
+                } else if (output.equals("CANCOMMIT")){
+                    int num_commit = clients_pending_commit.get(client);
+                    if (num_commit + 1 == peers.size() + 1) {
+                        commitAll(client);
+                    } else {
+                        clients_pending_commit.put(client, num_commit + 1);
+                    }
+                }
+                return;
+            }
+            if (command[0].equals("CHECKCOMMIT") && !fromServer.equals("")) {
                 // broadcast Precommit to all servers
                 // if all good to commit received, broadcast commit
                 // if received fail to commit, broadcast abort, delete all previous transactions of the client
                 // rerun the current client, if some client's transaction won't met concurrency, abort that too
-
-
-
-                sendToClient(out, "COMMIT");
+                String output = acc.checkCommit(client);
+                while (output.equals("WAIT")) {
+                    output = acc.checkCommit(client);
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException interruptedException) {
+                        interruptedException.printStackTrace();
+                    }
+                }
+                sendToServer(fromServer, client, output, true);
                 return;
             }
-            if (command[0].equals("ABORT")) {
+            if (command[0].equals("DOCOMMIT") && !fromServer.equals("")) {
+                acc.commit(client);
+                return;
+            }
+            if (command[0].equals("ABORT") && !fromServer.equals("")) {
                 acc.abort(client);
                 return;
             }
@@ -168,26 +219,36 @@ public class Server {
                 clients_pending_reply.put(client, out);
             } else {
                 Transaction tx;
+                String output = "";
                 if (command[0].equals("BALANCE")) {
                     tx = new Transaction(client, "BALANCE", destAccount[1], 0);
+                    try {
+                        output = acc.execute(tx);
+                    } catch (InterruptedException interruptedException) {
+                        interruptedException.printStackTrace();
+                    }
+                    if (!output.equals("NOT FOUND, ABORTED") && !output.equals("ABORTED")) {
+                        output = me.branch + "." + tx.account + " = " + output;
+                    }
                 } else {
                     tx = new Transaction(client, command[0], destAccount[1], Integer.parseInt(command[2]));
-                }
-                String output = null;
-                try {
-                    output = acc.execute(tx);
-                } catch (InterruptedException interruptedException) {
-                    interruptedException.printStackTrace();
-                }
-                if (output.equals("ABORTED") || output.equals("NOT FOUND, ABORTED")) {
-                    // Server abort the tx within the server, send abort command to peers to abort the same tx
-                    acc.abort(client);
-                    for (Peer p: peers.values()) {
-                        sendToServer(p.branch, client, "ABORT", false);
+                    try {
+                        output = acc.execute(tx);
+                    } catch (InterruptedException interruptedException) {
+                        interruptedException.printStackTrace();
                     }
                 }
+                assert !output.equals("");
+                /*if (output.equals("ABORTED") || output.equals("NOT FOUND, ABORTED")) {
+                    // Server abort the tx within the server, send abort command to peers to abort the same tx
+                    abortAll(client);
+                    return;
+                }*/
                 if (fromServer.isEmpty()) {
                     // send back to client
+                    if (output.equals("NOT FOUND, ABORTED") || output.equals("ABORTED")) {
+                        abortAll(client);
+                    }
                     sendToClient(out, output);
                 } else {
                     sendToServer(fromServer, client, output, true);
@@ -196,6 +257,30 @@ public class Server {
         }
     }
 
+    private static void checkCommitAll(String client) {
+        clients_pending_commit.put(client, 0);
+        for (Peer p: peers.values()) {
+            sendToServer(p.branch, client, "CHECKCOMMIT", false);
+        }
+    }
+
+    private static void abortAll(String client) {
+        acc.abort(client);
+        clients_pending_commit.remove(client);
+        for (Peer p: peers.values()) {
+            sendToServer(p.branch, client, "ABORT", false);
+        }
+        sendToClient(clients_pending_reply.get(client), "ABORTED");
+    }
+
+    private static void commitAll(String client) {
+        acc.commit(client);
+        clients_pending_commit.remove(client);
+        for (Peer p: peers.values()) {
+            sendToServer(p.branch, client, "DOCOMMIT", false);
+        }
+        sendToClient(clients_pending_reply.get(client), "COMMIT OK");
+    }
 
     private static class ConnectionHandler implements Runnable{
         private final Socket client;
@@ -205,6 +290,7 @@ public class Server {
             this.client = s;
             this.killed = false;
         }
+        @Override
         public void run() {
             try{
                 DataInputStream in = new DataInputStream(client.getInputStream());

@@ -88,7 +88,7 @@ public class Client {
                     Runtime.getRuntime().addShutdownHook(new TerminateConnection());
                     msg = this.peer.in.readUTF();
                     if (!msg.isEmpty()) {
-                        if (msg.equals("ABORTED") || msg.equals("NOT FOUND, ABORTED")) {
+                        if (msg.equals("ABORTED") || msg.equals("NOT FOUND, ABORTED") || msg.equals("COMMIT OK")) {
                             transacting = false;
                         }
                         System.out.println(msg);
@@ -117,13 +117,10 @@ public class Client {
                         transacting = true;
                         setRandomCoordinator();
                         send(command);
-                        Thread.sleep(10);
+                        Thread.sleep(50);
                     } else if (transacting) {
-                        if (command.equals("COMMIT")) {
-                            transacting = false;
-                        }
                         send(command);
-                        Thread.sleep(10);
+                        Thread.sleep(50);
                     }
                 }
             } catch (Exception e) {
